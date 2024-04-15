@@ -1,0 +1,1539 @@
+---
+title: "NDC topic modelling"
+author: "Ivan Savin"
+date: "15/04/2024"
+output: word_document
+classoption: landscape
+
+---
+
+<style type="text/css">
+body, td {
+   font-size: 20px;
+}
+code.r{ / Code block /
+    font-size: 6px;
+}
+</style>
+
+```{r echo=FALSE}
+rm(list=ls())
+setwd("E:/Projects/3_CurrentProjects/NDC text analysis/ndc-master")
+
+
+library(data.table)
+library("readxl")
+library(xml2)
+library(XML)
+sapply(c("magrittr", "data.table", 'plyr','dplyr', 'ggplot2', 'cluster','knitr', 'dendextend','pkgbuild','devtools','R.methodsS3','stm','ngram','matrixStats','corrplot','ggpubr','wordcloud','readxl','tm','igraph'), require, character.only = T)
+# rawHTML <- read_html(x = "AFG-first_ndc-EN.html")
+# rawHTML <- read_html("AFG-first_ndc-EN.html", skip = 0, remove.empty = TRUE, trim = TRUE)
+# rawHTML <- paste(readLines("AFG-first_ndc-EN.html"), collapse="\n")
+knitr::opts_chunk$set(fig.width=15, fig.height=7,dpi=500) 
+
+
+
+HTMLtoTEXT<-function(html_name){
+  # Read and parse HTML file
+  doc.html = htmlTreeParse(html_name, useInternal = TRUE)
+  # Extract all the paragraphs (HTML tag is p, starting at
+  # the root of the document). Unlist flattens the list to
+  # create a character vector.
+  doc.text = unlist(xpathApply(doc.html, '//p', xmlValue))
+  # Replace all \n by spaces
+  doc.text = gsub('\\n', ' ', doc.text)
+  # Join all the elements of the character vector into a single
+  # character string, separated by spaces
+  doc.text = paste(doc.text, collapse = ' ')
+  return(doc.text)
+}
+
+files <- list.files(path="./",pattern="*.html", full.names=TRUE, recursive=FALSE)
+files <- substring(files, first=3, last = 1000000L)
+files<-files[-18]
+
+NDC_database<-matrix(NA,length(files),5)
+NDC_database<-as.data.frame(NDC_database)
+colnames(NDC_database)<-c("id","country","version","language","text")
+for (i in 1:length(files)){
+  text<-HTMLtoTEXT(files[i])
+  NDC_database$id[i]<-i
+  NDC_database$country[i]<-substring(files[i], first=1, last = 3)
+  junk<-substring(files[i], first=5, last = 1000000L)
+  junk<-sub(".html.*", "", junk)  
+  junk<-sub("-.*", "", junk)  
+  #junk<-sub(".*-", "", junk)  
+  NDC_database$version[i]<-  junk
+  
+  
+  junk<-sub(".*-", "", files[i]) 
+  NDC_database$language[i]<-sub(".html.*", "", junk) 
+  NDC_database$text[i]<-text
+}
+
+
+print(i)
+
+
+
+'%!in%' <- function(x,y)!('%in%'(x,y))
+# 
+
+NDC_database_clean<-NDC_database[-which(NDC_database$language %!in% c("EN","EN ","EN_TR") ),]
+
+
+NDC_database_clean<-NDC_database_clean[-which(NDC_database_clean$version=="indc" & NDC_database_clean$country %!in% c("IRN","YEM")),]
+
+NDC_database_clean$version[which(NDC_database_clean$version=="indc")]<-"first_ndc"
+
+table(NDC_database_clean$version)
+table(NDC_database_clean$language)
+
+
+
+NDC_database_clean$country[which(NDC_database_clean$version=="archived_revised_first_ndc")]
+
+NDC_database_clean$country[which(NDC_database_clean$version=="revised_first_ndc")]
+
+NDC_database_clean$country[which(NDC_database_clean$version=="second_ndc")]
+
+NDC_database_clean$country[which(NDC_database_clean$version=="revised_second_ndc")]
+
+NDC_database_clean<- NDC_database_clean[-which(NDC_database_clean$version=="archived_revised_first_ndc"),]
+NDC_database_clean<- NDC_database_clean[-which(NDC_database_clean$version=="archived_second_ndc"),]
+
+NDC_database_clean<- NDC_database_clean[-which(NDC_database_clean$version=="second_ndc" & NDC_database_clean$country=="MHL"),]
+
+# NDC_database_clean<- NDC_database_clean[-which(NDC_database_clean$version=="second_ndc" & NDC_database_clean$country=="MHL"),]
+
+ NDC_database_clean<- NDC_database_clean[-which(NDC_database_clean$id=="152" & NDC_database_clean$country=="CRI"),]#remove duplicate
+
+NDC_database_clean$version[which(NDC_database_clean$version=="revised_first_ndc")]<-"second_ndc"
+NDC_database_clean$version[which(NDC_database_clean$version=="revised_second_ndc")]<-"second_ndc"
+
+NDC_database_clean<-NDC_database_clean[-which(NDC_database_clean$version=="first_ndc" & NDC_database_clean$country %in% c("AUT", "BEL", "BGR","CYP","CZE","DEU","DNK", "ESP","EST","FIN","FRA","GBR", "GRC","HRV","HUN","IRL","ITA", "LTU","LUX","LVA","MLT","NLD", "POL","PRT","ROU","SVK","SVN", "SWE", "PSE")),]#exclude EU copies and PSE,
+
+NDC_database_clean<-NDC_database_clean[-which(NDC_database_clean$version=="second_ndc" & NDC_database_clean$country %in% c("AUT", "BEL", "BGR","CYP","CZE","DEU","DNK", "ESP","EST","FIN","FRA", "GRC","HRV","HUN","IRL","ITA", "LTU","LUX","LVA","MLT","NLD", "POL","PRT","ROU","SVK","SVN", "SWE","PSE")),]#exclude EU copies and PSE
+
+
+table(NDC_database_clean$version)
+
+### ADDING ADDITIONAL FILES
+
+
+
+
+setwd("E:/Projects/3_CurrentProjects/NDC text analysis/NDCfinaladdition")
+
+files <- list.files(path="./",pattern="*.txt", full.names=TRUE, recursive=FALSE)
+files <- substring(files, first=3, last = 1000000L)
+files<-files[-18]
+ii<-length(NDC_database_clean$id)
+
+NDC_database2<-matrix(NA,length(files),5)
+NDC_database2<-as.data.frame(NDC_database2)
+colnames(NDC_database2)<-c("id","country","version","language","text")
+NDC_database_clean<-rbind(NDC_database_clean,NDC_database2)
+
+
+for (i in 1:length(files)){
+  ii<-ii+1
+  text<-paste0(readLines(files[i]),collapse=" ")
+  NDC_database_clean$id[ii]<-ii
+  NDC_database_clean$country[ii]<-substring(files[i], first=1, last = 3)
+  junk<-substring(files[i], first=5, last = 1000000L)
+  junk<-sub(".txt.*", "", junk)  
+  junk<-sub("-.*", "", junk)  
+  #junk<-sub(".*-", "", junk)  
+  NDC_database_clean$version[ii]<-  tolower(junk)
+  
+  
+  junk<-sub(".*-", "", files[i]) 
+  NDC_database_clean$language[ii]<-sub(".txt.*", "", junk) 
+  NDC_database_clean$text[ii]<-text
+}
+
+
+table(NDC_database_clean$version)
+
+setwd("E:/Projects/3_CurrentProjects/NDC text analysis/")
+
+data_extra<-read.csv('E:/Projects/3_CurrentProjects/NDC text analysis/NDC data for Ivan extended.csv', header=T, sep=',')
+data_extra<-data_extra[,1:13]
+data_extra$Party.grouping[which(data_extra$Party.grouping=="OPC")]<-"OPEC"
+colnames(data_extra)[1]<-"Country.code"
+
+NDC_database_clean$Type<-matrix(NA,length(NDC_database_clean$id),1)
+NDC_database_clean$Conditionality<-matrix(NA,length(NDC_database_clean$id),1)
+NDC_database_clean$Epc<-matrix(NA,length(NDC_database_clean$id),1)
+NDC_database_clean$Egdp<-matrix(NA,length(NDC_database_clean$id),1)
+NDC_database_clean$Echange<-matrix(NA,length(NDC_database_clean$id),1)
+NDC_database_clean$Party<-matrix(NA,length(NDC_database_clean$id),1)
+
+for (c in unique(NDC_database_clean$country)){
+  NDC_database_clean$Type[which(NDC_database_clean$country==c & NDC_database_clean$version=="first_ndc")]<-
+    data_extra$NDC1.type[which(data_extra$Country.code==c)]
+  NDC_database_clean$Type[which(NDC_database_clean$country==c & NDC_database_clean$version=="second_ndc")]<-
+    data_extra$NDCX.type[which(data_extra$Country.code==c)]  
+  
+  NDC_database_clean$Conditionality[which(NDC_database_clean$country==c & NDC_database_clean$version=="first_ndc")]<-
+    data_extra$NDC1.Conditionality[which(data_extra$Country.code==c)]
+  NDC_database_clean$Conditionality[which(NDC_database_clean$country==c & NDC_database_clean$version=="second_ndc")]<-
+    data_extra$NDCX.Conditionality[which(data_extra$Country.code==c)]  
+  
+  NDC_database_clean$Epc[which(NDC_database_clean$country==c & NDC_database_clean$version=="first_ndc")]<-
+    data_extra$X2015.E.per.capita..tonnes.CO2e.[which(data_extra$Country.code==c)]
+  NDC_database_clean$Epc[which(NDC_database_clean$country==c & NDC_database_clean$version=="second_ndc")]<-
+    data_extra$X2019.E.per.capita..tonnes.CO2e.[which(data_extra$Country.code==c)]  
+  
+  NDC_database_clean$Egdp[which(NDC_database_clean$country==c & NDC_database_clean$version=="first_ndc")]<-
+    data_extra$X2015.E..GDP[which(data_extra$Country.code==c)]
+  NDC_database_clean$Egdp[which(NDC_database_clean$country==c & NDC_database_clean$version=="second_ndc")]<-
+    data_extra$X2019.E..GDP[which(data_extra$Country.code==c)]
+  
+    
+  NDC_database_clean$Echange[which(NDC_database_clean$country==c & NDC_database_clean$version=="first_ndc")]<-
+    data_extra$NDC1...change.E[which(data_extra$Country.code==c)]
+  NDC_database_clean$Echange[which(NDC_database_clean$country==c & NDC_database_clean$version=="second_ndc")]<-
+    data_extra$NDCX...change.E[which(data_extra$Country.code==c)]
+  
+    
+  NDC_database_clean$Party[which(NDC_database_clean$country==c & NDC_database_clean$version=="first_ndc")]<-
+    data_extra$Party.grouping[which(data_extra$Country.code==c)]
+  NDC_database_clean$Party[which(NDC_database_clean$country==c & NDC_database_clean$version=="second_ndc")]<-
+    data_extra$Party.grouping[which(data_extra$Country.code==c)]
+}
+ 
+# table(NDC_database_clean$Party)
+# barplot(table(NDC_database_clean$Party),las=2)
+###
+
+
+
+NDC_database_clean$length_txt<-matrix(0,length(NDC_database_clean$text),1)
+
+NDC_database_clean$length_txt<-sapply(1:length(NDC_database_clean$text), function(x) wordcount(NDC_database_clean$text[x]))
+summary(NDC_database_clean$length_txt)
+
+hist(NDC_database_clean$length_txt, breaks = 100, main='Length of NDCs unfiltered in words')
+
+NDC_database_clean2<-NDC_database_clean
+abstracts<-NDC_database_clean$text
+
+abstracts <- gsub("'", "", abstracts)             # remove apostrophes
+abstracts <- gsub("[[:punct:]]", " ", abstracts)  # replace punctuation with space
+abstracts <- gsub("[[:cntrl:]]", " ", abstracts)  # replace control characters (tab, escape etc) with space
+abstracts <- gsub("^[[:space:]]+", "", abstracts) # remove whitespace at beginning of documents
+abstracts <- gsub("[[:space:]]+$", "", abstracts) # remove whitespace at end of documents
+abstracts <- gsub("[0-9]", "", abstracts)         #remove numbers
+abstracts <- gsub("[^A-Za-z ]","", abstracts)     #keep only english letters basically (avoid a and alike) 
+
+NDC_database_clean2$text<-abstracts
+
+NDC_database_clean2$length_txt<-matrix(0,length(NDC_database_clean2$text),1)
+
+NDC_database_clean2$length_txt<-sapply(1:length(NDC_database_clean2$text), function(x) wordcount(NDC_database_clean2$text[x]))
+summary(NDC_database_clean2$length_txt)
+
+
+a<-unique(NDC_database_clean$country[which(NDC_database_clean$version=="first_ndc")])
+ 
+b<-unique(NDC_database_clean$country[which(NDC_database_clean$version=="second_ndc")])
+
+# setdiff(a,b)
+
+# max(table(NDC_database_clean$country))
+
+
+NDC_database_clean2[which(NDC_database_clean2$version=="first_ndc"),3]<-1
+NDC_database_clean2[which(NDC_database_clean2$version=="second_ndc"),3]<-2
+NDC_database_clean2$version<-as.numeric(NDC_database_clean2$version)
+
+NDC_database_clean2[which(NDC_database_clean2$Conditionality=="UNC"),7]<-0
+NDC_database_clean2[which(NDC_database_clean2$Conditionality=="BOTH"),7]<-1
+NDC_database_clean2[which(NDC_database_clean2$Conditionality=="CON"),7]<-1
+NDC_database_clean2$Conditionality<-as.numeric(NDC_database_clean2$Conditionality)
+
+NDC_database_clean2$Type1<-matrix(0,length(NDC_database_clean2$Type),1)
+NDC_database_clean2$Type1[which(NDC_database_clean2$Type=="A")]<-1
+NDC_database_clean2$Type1[which(NDC_database_clean2$Type=="E")]<-1
+NDC_database_clean2$Type2<-matrix(0,length(NDC_database_clean2$Type),1)
+NDC_database_clean2$Type2[which(NDC_database_clean2$Type=="B")]<-1
+NDC_database_clean2$Type2[which(NDC_database_clean2$Type=="H")]<-1
+NDC_database_clean2$Type3<-matrix(0,length(NDC_database_clean2$Type),1)
+NDC_database_clean2$Type3[which(NDC_database_clean2$Type=="C")]<-1
+NDC_database_clean2$Type3[which(NDC_database_clean2$Type=="G")]<-1
+NDC_database_clean2$Type4<-matrix(0,length(NDC_database_clean2$Type),1)
+NDC_database_clean2$Type4[which(NDC_database_clean2$Type=="D")]<-1
+NDC_database_clean2$Type4[which(NDC_database_clean2$Type=="F")]<-1
+NDC_database_clean2$Type4[which(NDC_database_clean2$Type=="I")]<-1
+
+# table(NDC_database_clean2$Type1)
+# table(NDC_database_clean2$Type2)
+# table(NDC_database_clean2$Type3)
+# table(NDC_database_clean2$Type4)
+
+
+
+NDC_database_clean2$AFRC<-matrix(0,length(NDC_database_clean2$Type),1)
+NDC_database_clean2$AFRC[which(NDC_database_clean2$Party=="AFRC")]<-1
+NDC_database_clean2$ASIA<-matrix(0,length(NDC_database_clean2$Type),1)
+NDC_database_clean2$ASIA[which(NDC_database_clean2$Party=="ASIA")]<-1
+NDC_database_clean2$BASC<-matrix(0,length(NDC_database_clean2$Type),1)
+NDC_database_clean2$BASC[which(NDC_database_clean2$Party=="BASC")]<-1
+NDC_database_clean2$CISP<-matrix(0,length(NDC_database_clean2$Type),1)
+NDC_database_clean2$CISP[which(NDC_database_clean2$Party=="CISP")]<-1
+NDC_database_clean2$EURP<-matrix(0,length(NDC_database_clean2$Type),1)
+NDC_database_clean2$EURP[which(NDC_database_clean2$Party=="EURP")]<-1
+NDC_database_clean2$LACA<-matrix(0,length(NDC_database_clean2$Type),1)
+NDC_database_clean2$LACA[which(NDC_database_clean2$Party=="LACA")]<-1
+NDC_database_clean2$OECD<-matrix(0,length(NDC_database_clean2$Type),1)
+NDC_database_clean2$OECD[which(NDC_database_clean2$Party=="OECD")]<-1
+NDC_database_clean2$OPEC<-matrix(0,length(NDC_database_clean2$Type),1)
+NDC_database_clean2$OPEC[which(NDC_database_clean2$Party=="OPEC")]<-1
+NDC_database_clean2$SIDS<-matrix(0,length(NDC_database_clean2$Type),1)
+NDC_database_clean2$SIDS[which(NDC_database_clean2$Party=="SIDS")]<-1
+
+library(corrplot)
+
+TopicCorrMatrix<-NDC_database_clean2[,c(3,7:10,12:25)]
+
+TopicCorrMatrix$version<-as.numeric(TopicCorrMatrix$version)
+TopicCorrMatrix$Egdp<-as.numeric(TopicCorrMatrix$Egdp)
+
+TopicCorrMatrix1<-cor(TopicCorrMatrix)
+TopicCorrMatrix1<-TopicCorrMatrix1-diag(ncol(TopicCorrMatrix))
+rownames(TopicCorrMatrix1)<-colnames(TopicCorrMatrix1)
+#corrplot(TopicCorrMatrix1, is.corr = FALSE, order="hclust", method = "square",tl.cex=.7,tl.col = "black",cl.lim = c(-1, 1),col=colorRampPalette(c("blue","white","red"))(200))
+# corrplot(TopicCorrMatrix1, is.corr = FALSE, order="hclust", method = "square",tl.cex=.7,tl.col = "black",cl.lim = c(-1, 1),col=colorRampPalette(c("blue","white","red"))(200))
+
+# testRes = cor.mtest(TopicCorrMatrix, conf.level = 0.95)
+# corrplot(TopicCorrMatrix1, p.mat = testRes$p, method = 'circle', insig='blank',col.lim = c(-1, 1),tl.cex=.9,tl.col="black",
+#           diag = FALSE,col=colorRampPalette(c("blue","white","red"))(200))$corrPos -> p1
+# p1<-p1[which(p1$p.value<0.05),]
+# text(p1$x, p1$y, round(p1$corr, 2),cex=.7)
+
+# #age
+# median(data$q75,na.rm=TRUE)
+# mean(data$q75,na.rm=TRUE)
+# 
+# #gender
+# table(data$q74)/3342
+
+#write.csv(NDC_database_clean,'NDC_database_clean.csv', col.names=T)
+NDC_database_clean_l<- NDC_database_clean2
+NDC_database_clean_l$text<- sapply(1:length(NDC_database_clean_l$text), function(x) substr(NDC_database_clean_l$text[x], 1, 1000))  
+
+
+List_countries_sp<-unique(NDC_database_clean$country)
+List_countries_both<-NDC_database_clean$country[which(NDC_database_clean$version=="second_ndc")]
+List_countries_both<-List_countries_both[-which(List_countries_both=="GBR")]
+NDC_subset<-NDC_database_clean[which(NDC_database_clean$country %in% List_countries_both),]
+# table(NDC_subset$country)
+# table(NDC_database_clean$country)
+
+data_scatterplot<-matrix(0,length(List_countries_sp),4)
+data_scatterplot<-as.data.frame(data_scatterplot)
+colnames(data_scatterplot)<-c("Country","firstNDC", "updatedNDC","Party")
+ii<-1
+for (i in List_countries_sp){
+data_scatterplot[ii,1]<-List_countries_sp[ii]
+if(i=="GBR"){data_scatterplot[ii,2] <- NDC_database_clean$length_txt[which(NDC_subset$country=="EUU" &NDC_database_clean$version=="first_ndc")]}else
+{data_scatterplot[ii,2]<-NDC_database_clean$length_txt[which(NDC_database_clean$version=="first_ndc" & NDC_database_clean$country==i)]
+}
+if(!(i %in% NDC_subset$country)){data_scatterplot[ii,3] <- 0}else
+  {data_scatterplot[ii,3]<-NDC_database_clean$length_txt[which(NDC_database_clean$version=="second_ndc" & NDC_database_clean$country==i)]}
+data_scatterplot[ii,4]<-data_extra$Party.grouping[which(data_extra$Country.code==i)]
+
+ii<-ii+1
+}
+
+
+
+ggplot(data_scatterplot, aes(x=firstNDC, y=updatedNDC, label = Country)) +    # ggplot2 plot with labels
+  geom_point() +
+  geom_text(aes(label = Country), hjust = - 0.5,size = 2)+ 
+  theme(text = element_text(size = 10)) +
+  xlim(0, 10000)+
+  ylim(0, 80000)+
+  xlab("First NDC") + ylab("Updated NDC")
+
+```            
+            
+            
+
+Prepare lemmatized and cleaned data 
+dropping stopwords and rare words (appearing in less than 2 documents). The latter is typical for STM as rare words do not contribute much to clusters of words (topics). 
+
+As a result, we get the following message from the algorithm on data cleaning:
+
+
+
+Removing 1123 of 8722 terms (3194 of 543096 tokens) due to frequency 
+Your corpus now has 1280 documents, 7599 terms and 539902 tokens.
+
+& test STM models for number of topics 3:50 
+As covariates I use version, conditionality, type, region and data on emisisons
+(version + Conditionality + Epc + Egdp + Echange + Type1 + Type2 + Type3 + AFRC + ASIA + BASC + CISP + EURP  + LACA + OECD + SIDS)
+```{r, echo=FALSE}
+
+# setwd("E:/Projects/3_CurrentProjects/NDC text analysis")
+# stopwords <- read.csv('stopwords for ivan.csv', header=T, sep=',',encoding = "UTF-8")
+# stopwords<-tolower(stopwords)
+# #stopwords <- gsub("\", "", stopwords)             # remove apostrophes
+
+# 
+# data_lemmatized<-data_lemmatized[-which(data_lemmatized$version=="first_ndc" & data_lemmatized$country %in% c("AUT", "BEL", "BGR","CYP","CZE","DNK", "ESP","EST","FIN","FRA","GBR", "GRC","HRV","HUN","IRL","ITA", "LTU","LUX","LVA","MLT","NLD", "POL","PRT","ROU","SVK","SVN", "SWE")),]#exclude "DEU",
+# 
+# data_lemmatized<-data_lemmatized[-which(data_lemmatized$version=="second_ndc" & data_lemmatized$country %in% c("AUT", "BEL", "BGR","CYP","CZE","DNK", "ESP","EST","FIN","FRA", "GRC","HRV","HUN","IRL","ITA", "LTU","LUX","LVA","MLT","NLD", "POL","PRT","ROU","SVK","SVN", "SWE")),]#exclude "DEU", 'GBR'
+
+
+
+justloaddata<-1
+
+if(justloaddata==0){
+  
+  
+data_lemmatized <- read.csv('E:/Projects/3_CurrentProjects/NDC text analysis/NDC_database_clean23_11_ln.csv', header=T, sep=',',encoding = "UTF-8")
+
+data_lemmatized$Conditionality<- NDC_database_clean2$Conditionality
+
+data_lemmatized$length_txt_lemm<-sapply(1:length(data_lemmatized$text_clean), function(x) wordcount(data_lemmatized$text_clean[x]))
+summary(data_lemmatized$length_txt_lemm)
+hist(data_lemmatized$length_txt_lemm, breaks = 100, main='Length of NDCs lemmatized')
+
+data_lemmatized$id<-seq(1:length(data_lemmatized$id))
+
+splitSentence <- function(sentence, blockLength) {
+   words <- strsplit(sentence, " ")[[1]]
+   blocks <- c()
+   currentBlock <- ""
+   for (i in 1:length(words)) {
+      word <- words[i]
+      if (nchar(currentBlock) + nchar(word) <= blockLength) {
+         currentBlock <- paste(currentBlock, word, sep = " ")
+      } else {
+         blocks <- c(blocks, currentBlock)
+         currentBlock <- word
+      }
+   }
+   if (nchar(currentBlock) > 0) {
+      blocks <- c(blocks, currentBlock)
+   }
+   return(blocks)
+}
+
+
+#print(result)
+
+blockLength <- 9000
+data_lemmatized_split<-data_lemmatized
+istr_num<-1
+i_num<-1
+counter<-c()
+for (istr in 1:length(data_lemmatized$id)){
+  sentence <- data_lemmatized$text_clean[istr]
+  result <- splitSentence(sentence, blockLength)
+  istr_num<-length(result)
+  data_lemmatized_split[i_num:(i_num+istr_num-1),]<-data_lemmatized[istr,]
+  data_lemmatized_split$text_clean[i_num:(i_num+istr_num-1)]<-result
+  i_num<-i_num+istr_num
+  counter<-c(counter, istr_num)
+}
+max(counter)
+
+data_lemmatized_split$length_split<-sapply(1:length(data_lemmatized_split$text_clean), function(x) wordcount(data_lemmatized_split$text_clean[x]))
+summary(data_lemmatized_split$length_split)
+
+
+  data_lemmatized_split<-as.data.frame(data_lemmatized_split)
+  
+  
+  
+library(stm)
+processed <- textProcessor(data_lemmatized_split$text_clean,
+                           metadata = data_lemmatized_split, lowercase = FALSE,
+                           removestopwords = FALSE, removenumbers = FALSE,
+                           removepunctuation = FALSE, stem = FALSE,
+                           wordLengths = c(3, Inf), sparselevel = 1, 
+                           language = "en",
+                           verbose = TRUE)
+
+# Building corpus... 
+# Converting to Lower Case... 
+# Removing punctuation... 
+# Removing stopwords... 
+# Remove Custom Stopwords...
+# Removing numbers... 
+# Creating Output... 
+out <- prepDocuments(processed$documents, processed$vocab, meta=processed$meta, lower.thresh=3,verbose = TRUE)
+# Removing 255315 of 272232 terms (364310 of 7437481 tokens) due to frequency 
+# Removing 11 Documents with No Words 
+# Your corpus now has 250226 documents, 16917 terms and 7073171 tokens.>
+
+vocab_app<-out$vocab
+junk<-out$wordcounts[out$wordcounts>3]
+freq_vocab<-out$wordcounts[out$wordcounts>3]
+#table(unlist(out$documents))
+vocab_app<-vocab_app[order(freq_vocab,decreasing = TRUE)]
+pop_words<-cbind(vocab_app,freq_vocab[order(freq_vocab,decreasing = TRUE)])
+print(length(out$vocab))
+#7599
+out$meta$version<-as.factor(out$meta$version)
+
+
+
+storage<-searchK(out$documents, out$vocab, K = c(3:50),
+                   prevalence =~ version + Conditionality + Epc + Egdp + Echange,
+                   data = out$meta,heldout.seed =59292,init.type="Spectral",
+                   N = floor(0.1 *length(out$documents)),
+                   M=30,#number of keywords per topic to calculate exclusivity`  
+                   #max.em.its=1000 #max number of iterations per model
+                   
+  )
+  save(list = ls(all = TRUE), file = "calibration_twitter_50v2311.RData")
+}
+load("E:/Projects/3_CurrentProjects/NDC text analysis/calibration_twitter_50v2311.RData")
+
+
+out$meta$length_txt_filtered<-sapply(1:length(out$documents), function(x) length(out$documents[[x]]))
+summary(out$meta$length_txt_filtered)
+hist(out$meta$length_txt_filtered, breaks = 100, main='Length of NDCs filtered in words')
+
+vocab_app<-out$vocab
+junk<-out$wordcounts[out$wordcounts>3]
+freq_vocab<-out$wordcounts[out$wordcounts>3]
+#table(unlist(out$documents))
+vocab_app<-vocab_app[order(freq_vocab,decreasing = TRUE)]
+pop_words<-cbind(vocab_app,freq_vocab[order(freq_vocab,decreasing = TRUE)])
+print(length(out$vocab))
+#100 most popular words in the whole text
+print(pop_words[1:100,])
+#write.csv(pop_words,"pop_word.csv",fileEncoding = "ISO-8859-1")
+
+demoFreq<-as.data.frame(pop_words)
+library(wordcloud2)
+colnames(demoFreq)<-c("word","freq")
+demoFreq$freq<-as.numeric(demoFreq$freq)
+# png('cloud.png',width = 15, height = 8, units = 'in', res = 1000)
+# letterCloud(demoFreq, word = "EIST", color="white", backgroundColor="pink")
+# dev.off()
+
+#png('cloud.png',width = 15, height = 8, units = 'in', res = 1000)
+#wordcloud2(demoFreq)
+#dev.off()
+Kchoice<-21#29
+
+par(mfrow = c(1, 3) ,mar=c(4,4,1,2)) 
+plot(storage$results$K[1:48], storage$results$heldout[1:48], ylab="Heldout log-likelihood",xlab="",xaxt="n",col=ifelse(storage$results$K %in% Kchoice, 'red', 'blue'))
+axis(1, at=3:(length(storage$results$K)+2), labels=storage$results$K)
+plot(storage$results$K[1:48],storage$results$exclus[1:48],  ylab="Exclusivity",xlab="Number of Topics",xaxt="n",col=ifelse(storage$results$K %in% Kchoice, 'red', 'blue'))
+axis(1, at=3:(length(storage$results$K)+2), labels=storage$results$K)
+plot(storage$results$K[1:48],storage$results$semcoh[1:48], ylab="Semantic coherence",xlab="",xaxt="n",col=ifelse(storage$results$K %in% Kchoice, 'red', 'blue'))
+axis(1, at=3:(length(storage$results$K)+2), labels=storage$results$K)
+
+```
+
+
+Here we observe:
+
+ - the figure with topic proportions, i.e. how much text explained by each of the topics;  
+ - the figure with topic summary printing 10 most frequent and exclusive words for each topic;  
+ - summary of each topic with words having  highest probability (most frequent), frequency and exclusivity (FREX), LIFT and SCORE you can ignore as those are rather internal measures without intuitive interpretation;  
+
+  
+  We chose 20 topics
+```{r, echo=FALSE}
+justloaddata<-1
+
+if(justloaddata==0){
+
+  ncpSelect2 <- selectModel(out$documents, 
+                            out$vocab, 
+                            K = Kchoice,
+                            prevalence =~ version + Conditionality + Epc + Egdp + Echange ,
+                            data = out$meta,
+                            runs=2,
+                            seed =1,
+                            init.type="Spectral",
+                            verbose=TRUE) #, emtol=1) Defaults to .001%.
+  save(ncpSelect2, file = "ndc_v2311_21test.RData")
+}
+load("ndc_v2311_21test.RData")
+
+justloaddata<-1
+
+if(justloaddata==0){
+
+processed2 <- textProcessor(data_lemmatized$text_clean,
+                           metadata = data_lemmatized, lowercase = FALSE,
+                           removestopwords = FALSE, removenumbers = FALSE,
+                           removepunctuation = FALSE, stem = FALSE,
+                           wordLengths = c(3, Inf), sparselevel = 1, 
+                           language = "en",
+                           verbose = TRUE)
+
+out2 <- prepDocuments(processed2$documents, processed2$vocab, meta=processed2$meta, lower.thresh=3,verbose = TRUE)
+
+ncpSelect22 <- selectModel(out2$documents, 
+                            out2$vocab, 
+                            K = Kchoice,
+                            prevalence =~ version + Conditionality + Epc + Egdp + Echange,
+                            data = out2$meta,
+                            runs=2,
+                            seed =1,
+                            init.type="Spectral",
+                            verbose=TRUE) #, emtol=1) Defaults to .001%.
+
+ncpPrevFit_startup2 <- ncpSelect22$runout[[1]]
+
+
+
+weights_aggregated<-matrix(0,309,Kchoice)
+for (id in 1:309){
+  for (kid in 1:Kchoice){
+        weights_aggregated[id,kid]<-weighted.mean(ncpPrevFit_startup$theta[which(data_lemmatized_split$id==id),kid], w=data_lemmatized_split$length_split[which(data_lemmatized_split$id==id)], na.rm = FALSE)
+      } 
+}
+
+ncpPrevFit_startup2$theta<-weights_aggregated
+
+
+
+  save(processed2,out2,ncpPrevFit_startup2, file = "secondstmtest.RData")
+}
+load("secondstmtest.RData")# Check the four selected models
+# par(mfrow = c(1, 1) ,mar=c(4,4,1,2)) 
+# plotModels(ncpSelect2,xlab="Semantic Coherence")
+# mean(unlist(ncpSelect2$semcoh))
+# mean(unlist(ncpSelect2$exclusivity))
+#semantic coherence for  2      3       4     5 topics
+#                     -151.0 -171.4  -192  -197
+#exclusivity for         2      3       4     5 topics
+#                      8.17   8.80     9.05  9.32
+# Choose run #1 based on qualitative assessment: 
+
+
+#put topic labels here
+tiopiclabel<-as.character(matrix(0,Kchoice,1))
+tiopiclabel[18]<-"T1: Sustainable development" #ABM, numerical stochastic, bayesian
+tiopiclabel[12]<-"T2: Economic development"
+tiopiclabel[17]<-"T3: Greenhouse gas accounting" # in value creation
+tiopiclabel[7]<-"T4: International support and funding" # in value creation
+tiopiclabel[8]<-"T5: Emission scenarios" #ABM, numerical stochastic, bayesian
+tiopiclabel[14]<-"T6: Adaptation planning" #progress, patents
+tiopiclabel[16]<-"T7: Vulnerability of coastal areas"
+tiopiclabel[9]<-"T8: Targets and reporting" #analysing 
+tiopiclabel[20]<-"T9: Climate system impacts" #developing 
+tiopiclabel[4]<-"T10: Green energy policies"# and roadmapping
+tiopiclabel[15]<-"T11: Goals and commitments" #sme, entrepreneurship, csr
+tiopiclabel[3]<-"T12: Green energy technologies" #decision making
+tiopiclabel[19]<-"T13: Forests and ecosystems" #analysing 
+tiopiclabel[5]<-"T14: Project financing" # public policy, science, technology and innovation
+tiopiclabel[21]<-"T15: Rural development"
+tiopiclabel[6]<-"T16: Agriculture resource management"
+tiopiclabel[13]<-"T17: Waste, transport and industry" #supply chain, agile, digitalization
+tiopiclabel[11]<-"T18: (Inter)governmental organisations"
+tiopiclabel[2]<-"T19: Gender and youth" #media, interaction, behaviour, online shopping
+tiopiclabel[10]<-"T20: Action plans" #developing 
+tiopiclabel[1]<-"T21: Agriculture mitigation" #"Undesirable versus desirable societies" "CRITICAL LONG-TERM PLANNING; DESIRABLE SOCIETIES; TECHNOLOGICAL FORECASTING"  
+# tiopiclabel[16]<-"T16: golf countries (mining, women,...)" # literature related discovery, mining, literature review, AI
+# tiopiclabel[22]<-"T22: "
+
+
+Korder<-c(18,12,17,7,8,14,16,9,20,4,15,3,19,5,21,6,13,11,2,10,1)#seq(1,Kchoice)#
+
+
+
+ncpPrevFit_startup <- ncpSelect2$runout[[1]]
+#exclusivity(ncpPrevFit_ecogrowth, M = 10, frexw = 0.7)
+# Save workspace after model runs
+#save(list = ls(all = TRUE), file = "preparedModels-EcoGrowth-stm-pub4.RData")
+#make.dt(ncpPrevFit_climpolicy)
+#plot(ncpPrevFit_startup, type="summary", main="",custom.labels=tiopiclabel)
+
+# justloaddata<-1
+# 
+# if(justloaddata==0){
+# 
+# processed2 <- textProcessor(data_lemmatized$text_clean,
+#                            metadata = data_lemmatized, lowercase = FALSE,
+#                            removestopwords = FALSE, removenumbers = FALSE,
+#                            removepunctuation = FALSE, stem = FALSE,
+#                            wordLengths = c(3, Inf), sparselevel = 1, 
+#                            language = "en",
+#                            verbose = TRUE)
+# 
+# out2 <- prepDocuments(processed2$documents, processed2$vocab, meta=processed2$meta, lower.thresh=3,verbose = TRUE)
+# 
+# ncpSelect22 <- selectModel(out2$documents, 
+#                             out2$vocab, 
+#                             K = Kchoice,
+#                             prevalence =~ version + Conditionality + Epc + Egdp + Echange + AFRC + ASIA + BASC + CISP + EURP  + LACA + OECD + SIDS,
+#                             data = out2$meta,
+#                             runs=2,
+#                             seed =1,
+#                             init.type="Spectral",
+#                             verbose=TRUE) #, emtol=1) Defaults to .001%.
+# 
+# ncpPrevFit_startup2 <- ncpSelect22$runout[[1]]
+# 
+# ncpPrevFit_startup2$theta<-weights_aggregated
+# 
+# 
+# 
+#   save(processed2,out2,ncpPrevFit_startup2, file = "secondstm.RData")
+# }
+# load("secondstm.RData")
+
+
+#unique(data_lemmatized_split$id)
+
+weights_aggregated<-matrix(0,309,Kchoice)
+for (id in 1:309){
+  for (kid in 1:Kchoice){
+        weights_aggregated[id,kid]<-weighted.mean(ncpPrevFit_startup$theta[which(data_lemmatized_split$id==id),kid], w=data_lemmatized_split$length_split[which(data_lemmatized_split$id==id)], na.rm = FALSE)
+      } 
+}
+
+aggregated_topic_weights<-colSums(weights_aggregated)/sum(weights_aggregated)
+aggregated_topic_weights[Korder]
+# par(mfrow = c(1, 1) ,mar=c(5,12,1,4))
+# barplot(rev(aggregated_topic_weights[Korder]), names.arg = rev(tiopiclabel[Korder]), main="",horiz=TRUE,las=2,cex.names=0.6,)
+par(mfrow = c(1, 1), cex=1.5)
+plot(ncpPrevFit_startup, type="labels", labeltype="frex",text.cex = .4,n=10)
+
+
+# par(mfrow = c(1, 1) ,mar=c(0,0,0,0)) 
+# plot(ncpPrevFit_startup, type="hist")
+
+dd<-ncpPrevFit_startup$vocab
+vocab_app<-out$vocab
+junk<-out$wordcounts[out$wordcounts>3]
+freq_vocab<-out$wordcounts[out$wordcounts>3]#table(unlist(out$documents))
+vocab_app<-vocab_app[order(freq_vocab,decreasing = TRUE)]
+
+logbeta<-ncpPrevFit_startup$beta$logbeta[[1]]
+word_prob<-exp(logbeta)
+word_attribute<-sapply(1:dim(word_prob)[2], function(y) which(word_prob[,y]==max(word_prob[,y])))
+#print(out$vocab)
+word_prob_sorted<-word_prob[,order(freq_vocab,decreasing = TRUE)]
+word_attribute_sorted<-word_attribute[order(freq_vocab,decreasing = TRUE)]
+aa<-data.frame(vocab_app,sort(freq_vocab,decreasing = TRUE),t(word_prob_sorted),word_attribute_sorted)
+#write.csv(aa, "vocabulary.csv")
+
+####
+# Analysis on chosen model run 
+# Table 1: most frequent and exclusive terms (FREX): 
+#label<-labelTopics(ncpPrevFit_ecogrowth, topics=NULL, n=10)
+labelTopics(ncpPrevFit_startup, topics=Korder, n=20)
+
+# ncpPrevFit_startup$theta[which(out$meta$Titles=="A system dynamics based market agent model simulating future powertrain technology transition: Scenarios in the EU light duty vehicle road transport sector"),]
+
+```   
+
+
+
+```{r, echo=FALSE}
+List_countries<-unique(data_lemmatized$country)
+
+data_clust<-matrix(0,length(unique(data_lemmatized$country)),Kchoice+2)
+data_clust<-as.data.frame(data_clust)
+data_clust[,1]<-List_countries
+
+ii<-1
+for (i in List_countries){
+data_clust[which(data_clust[,1]==i),2]<-data_lemmatized$Party[which(data_lemmatized$country==i)[1]]
+
+for (j in 1:Kchoice){
+  data_clust[which(data_clust[,1]==i),2+j]<-mean(ncpPrevFit_startup2$theta[which(data_lemmatized$country==i),Korder[j]])
+}
+}
+rownames(data_clust)<-List_countries
+
+
+clust_dist <- dist(data_clust[,3:23], method='euclidian')
+hier_clust <- hclust(clust_dist, method='complete')
+
+library(stats)
+plot(as.dendrogram(hier_clust),cex = 0.2)
+dend_col <- color_branches(hier_clust, k=9,col= )
+plot(dend_col, cex = 0.1)
+# plot(dend_col)
+# dend_labels <- labels(dend_col)
+# text(x = 1:length(dend_labels), labels = dend_labels, srt = 45, adj = c(1,1), xpd = T)
+
+par(cex=0.3, mar=c(5,4,4,8) + 0.1)
+
+plot(dend_col, cex = 0.01,horiz=TRUE)
+
+library("ape")
+
+par(cex=.7, mar=c(5,4,4,8) + 0.1)
+# plot(as.phylo(dend_col), type = "fan")
+
+par(cex=0.7, mar=c(5,4,4,8) + 0.1)
+colors = c("lightskyblue",'palevioletred', "orange","blueviolet","turquoise",'lightgreen', "blue",  "red","darkgreen")
+clus9 = cutree(dend_col, 9)
+# plot(as.phylo(dend_col), type = "fan", tip.color = colors[clus9])
+
+# 
+# library("ColorDendrogram")
+# ColorDendrogram(hc, y, main = "", branchlength = 0.7, labels = NULL,
+# xlab = NULL, sub = NULL, ylab = "", cex.main = NULL)
+
+
+# dend <- data_clust[,3:23] %>% scale %>% dist %>% 
+#    hclust %>% as.dendrogram %>%
+#    set("branches_k_color", k=9) %>% set("branches_lwd", 1.2) %>%
+#    set("labels_colors") %>% set("labels_cex", c(.9,1.2)) %>% 
+#    set("leaves_pch", 19) %>% set("leaves_col", c("blue", "red"))
+# # plot the dend in usual "base" plotting engine:
+# plot(dend)
+# 
+# ggd1 <- as.ggdend(dend)
+# ggplot(ggd1) 
+# 
+# ggplot(ggd1) + 
+#   scale_y_reverse(expand = c(0.2, 0)) +
+#   coord_polar(theta="x")
+
+# install.packages("dendextend")
+# install.packages("circlize")
+library(circlize)
+
+
+# Fan tree plot with colored labels
+# circlize_dendrogram(dend_col,
+#                     labels_track_height = NA,
+#                     dend_track_height = 0.5)  
+
+
+colors = c("lightskyblue",'palevioletred', "orange","blueviolet","turquoise",'lightgreen', "blue",  "red","darkgreen")
+clus9 = as.numeric(as.factor(data_clust[order.dendrogram(dend_col),2]))
+
+dend_col2 <- dend_col %>%
+  color_labels(labels=List_countries, col=colors[clus9])%>%
+  set("labels_cex", c(.75))
+
+# circlize_dendrogram(dend_col2,
+#                     labels_track_height = NA,
+#                     dend_track_height = 0.5) 
+
+
+
+
+
+
+
+colors = c("lightskyblue",'palevioletred', "orange","blueviolet","turquoise",'lightgreen', "blue",  "red","darkgreen")
+clus9 = cutree(dend_col, 9)
+# colors = c("lightskyblue",'pink', "orange","blueviolet","turquoise",'lightgreen', "blue",  "red","darkgreen")
+# clus9 = as.numeric(as.factor(data_clust[order.dendrogram(dend_col),2]))
+
+dend_col2 <- dend_col %>%
+  color_labels(labels=List_countries, col=colors[clus9[order.dendrogram(dend_col)]])%>%
+  color_branches(k=9,col=colors[c(5,8,3,9,7,4,6,2,1)])%>%
+ set("labels_cex", c(.75))
+
+circlize_dendrogram(dend_col2,
+                    labels_track_height = NA,
+                    dend_track_height = 0.5) 
+
+
+
+
+
+dend_col3 <- dend_col %>%
+  color_labels(k=9,col=colors[clus9])
+
+# circlize_dendrogram(dend_col3,
+#                     labels_track_height = NA,
+#                     dend_track_height = 0.5)  
+
+
+groups <- cutree(hier_clust, h = 0.63)
+
+table(groups)
+groups[groups==1]
+groups[groups==2]
+groups[groups==3]
+groups[groups==4]
+groups[groups==5]
+groups[groups==6]
+groups[groups==7]
+groups[groups==8]
+groups[groups==9]
+
+
+groups[which(groups==9)]<-11
+groups[which(groups==5)]<-12
+groups[which(groups==8)]<-13
+groups[which(groups==1)]<-14
+groups[which(groups==2)]<-15
+groups[which(groups==4)]<-16
+groups[which(groups==6)]<-17
+groups[which(groups==3)]<-18
+groups[which(groups==7)]<-19
+
+groups[groups==11]
+groups[groups==12]
+groups[groups==13]
+groups[groups==14]
+groups[groups==15]
+groups[groups==16]
+groups[groups==17]
+groups[groups==18]
+groups[groups==19]
+
+
+data_clust$cluster<-groups
+
+data_clustering2<-matrix(0,9,22)
+data_clustering2<-as.data.frame(data_clustering2)
+colnames(data_clustering2)<-c("Cluster","T1","T2","T3","T4","T5","T6","T7","T8","T9","T10","T11","T12","T13","T14","T15","T16","T17","T18","T19","T20","T21")
+
+data_clustering2[,1]<-c('C4: Venezuela','C1: Umbrella1 & Korea', "C2: Umbrella2 & EU","C9: Miscelleneous seven","C8: G77+ China & LMDC2",'C6: AILAC', "C7: AFrican Group","C3: CIS, Brazil and LMDC1","C5: India & SIDS")
+for (clusti in 2:22){
+for (groupsi in 11:19){
+  data_clustering2[(groupsi-10),clusti]<-mean(data_clust[which(data_clust$cluster==groupsi),(clusti+1)])
+
+}
+  }
+  
+rownames(data_clustering2)<-c('C4: Venezuela','C1: Umbrella1 & Korea', "C2: Umbrella2 & EU","C9: Miscelleneous seven","C8: G77+ China & LMDC2",'C6: AILAC', "C7: AFrican Group","C3: CIS, Brazil and LMDC1","C5: India & SIDS")
+
+
+g1<-ggplot(data = data_clustering2, aes(x = Cluster, y = T1))+ 
+  # geom_errorbar(aes(ymin = mean-2*se, ymax = mean+2*se, color = Question),
+  #               position= position_dodge(0.5), width = 0.2) +
+  geom_point(position = position_dodge(0.5)) +
+  labs(x = "", y = "T1: Sustainable development")+
+  theme(axis.text.x = element_text(size = 6, angle = 55, hjust = 1))+
+  theme(axis.title.y = element_text(size = 6))+
+geom_hline(yintercept=mean(data_clust$V3), linetype="dashed", color = "black")+ theme(legend.position="bottom")+
+  ylim(0,  max(data_clustering2$T1))#+
+
+g2<-ggplot(data = data_clustering2, aes(x = Cluster, y = T2))+ 
+  # geom_errorbar(aes(ymin = mean-2*se, ymax = mean+2*se, color = Question),
+  #               position= position_dodge(0.5), width = 0.2) +
+  geom_point(position = position_dodge(0.5)) +
+  labs(x = "", y = "T2: Economic development")+
+  theme(axis.text.x = element_text(size = 6, angle = 55, hjust = 1))+   theme(axis.title.y = element_text(size = 6))+
+geom_hline(yintercept=mean(data_clust$V4), linetype="dashed", color = "black")+ theme(legend.position="bottom")+
+  ylim(0,  max(data_clustering2$T2))#+
+
+g3<-ggplot(data = data_clustering2, aes(x = Cluster, y = T3))+ 
+  # geom_errorbar(aes(ymin = mean-2*se, ymax = mean+2*se, color = Question),
+  #               position= position_dodge(0.5), width = 0.2) +
+  geom_point(position = position_dodge(0.5)) +
+  labs(x = "", y = "T3: Greenhouse gas accounting")+
+  theme(axis.text.x = element_text(size = 6, angle = 55, hjust = 1))+   theme(axis.title.y = element_text(size = 6))+
+geom_hline(yintercept=mean(data_clust$V5), linetype="dashed", color = "black")+ theme(legend.position="bottom")+
+  ylim(0,  max(data_clustering2$T3))#+
+
+g4<-ggplot(data = data_clustering2, aes(x = Cluster, y = T4))+ 
+  # geom_errorbar(aes(ymin = mean-2*se, ymax = mean+2*se, color = Question),
+  #               position= position_dodge(0.5), width = 0.2) +
+  geom_point(position = position_dodge(0.5)) +
+  labs(x = "", y = "T4: International support and funding")+
+  theme(axis.text.x = element_text(size = 6, angle = 55, hjust = 1))+   theme(axis.title.y = element_text(size = 6))+
+geom_hline(yintercept=mean(data_clust$V6), linetype="dashed", color = "black")+ theme(legend.position="bottom")+
+  ylim(0,  max(data_clustering2$T4))#+
+
+
+g5<-ggplot(data = data_clustering2, aes(x = Cluster, y = T5))+ 
+  # geom_errorbar(aes(ymin = mean-2*se, ymax = mean+2*se, color = Question),
+  #               position= position_dodge(0.5), width = 0.2) +
+  geom_point(position = position_dodge(0.5)) +
+  labs(x = "", y = "T5: Emission scenarios")+
+  theme(axis.text.x = element_text(size = 6, angle = 55, hjust = 1))+   theme(axis.title.y = element_text(size = 6))+
+geom_hline(yintercept=mean(data_clust$V7), linetype="dashed", color = "black")+ theme(legend.position="bottom")+
+  ylim(0,  max(data_clustering2$T5))#+
+
+
+g6<-ggplot(data = data_clustering2, aes(x = Cluster, y = T6))+ 
+  # geom_errorbar(aes(ymin = mean-2*se, ymax = mean+2*se, color = Question),
+  #               position= position_dodge(0.5), width = 0.2) +
+  geom_point(position = position_dodge(0.5)) +
+  labs(x = "", y = "T6: Adaptation planning")+
+  theme(axis.text.x = element_text(size = 6, angle = 55, hjust = 1))+   theme(axis.title.y = element_text(size = 6))+
+geom_hline(yintercept=mean(data_clust$V8), linetype="dashed", color = "black")+ theme(legend.position="bottom")+
+  ylim(0,  max(data_clustering2$T6))#+
+  
+
+
+
+g7<-ggplot(data = data_clustering2, aes(x = Cluster, y = T7))+ 
+  # geom_errorbar(aes(ymin = mean-2*se, ymax = mean+2*se, color = Question),
+  #               position= position_dodge(0.5), width = 0.2) +
+  geom_point(position = position_dodge(0.5)) +
+  labs(x = "", y = "T7: Vulnerability of coastal areas")+
+  theme(axis.text.x = element_text(size = 6, angle = 55, hjust = 1))+   theme(axis.title.y = element_text(size = 6))+
+geom_hline(yintercept=mean(data_clust$V9), linetype="dashed", color = "black")+ theme(legend.position="bottom")+
+  ylim(0,  max(data_clustering2$T7))#+
+
+g8<-ggplot(data = data_clustering2, aes(x = Cluster, y = T8))+ 
+  # geom_errorbar(aes(ymin = mean-2*se, ymax = mean+2*se, color = Question),
+  #               position= position_dodge(0.5), width = 0.2) +
+  geom_point(position = position_dodge(0.5)) +
+  labs(x = "", y = "T8: Targets and reporting")+
+  theme(axis.text.x = element_text(size = 6, angle = 55, hjust = 1))+   theme(axis.title.y = element_text(size = 6))+
+geom_hline(yintercept=mean(data_clust$V10), linetype="dashed", color = "black")+ theme(legend.position="bottom")+
+  ylim(0,  max(data_clustering2$T8))#+
+
+g9<-ggplot(data = data_clustering2, aes(x = Cluster, y = T9))+ 
+  # geom_errorbar(aes(ymin = mean-2*se, ymax = mean+2*se, color = Question),
+  #               position= position_dodge(0.5), width = 0.2) +
+  geom_point(position = position_dodge(0.5)) +
+  labs(x = "", y = "T9: Climate system impacts")+
+  theme(axis.text.x = element_text(size = 6, angle = 55, hjust = 1))+   theme(axis.title.y = element_text(size = 6))+
+geom_hline(yintercept=mean(data_clust$V11), linetype="dashed", color = "black")+ theme(legend.position="bottom")+
+  ylim(0,  max(data_clustering2$T9))#+
+
+g10<-ggplot(data = data_clustering2, aes(x = Cluster, y = T10))+ 
+  # geom_errorbar(aes(ymin = mean-2*se, ymax = mean+2*se, color = Question),
+  #               position= position_dodge(0.5), width = 0.2) +
+  geom_point(position = position_dodge(0.5)) +
+  labs(x = "", y = "T10: Green energy policies")+
+  theme(axis.text.x = element_text(size = 6, angle = 55, hjust = 1))+   theme(axis.title.y = element_text(size = 6))+
+geom_hline(yintercept=mean(data_clust$V12), linetype="dashed", color = "black")+ theme(legend.position="bottom")+
+  ylim(0,  max(data_clustering2$T10))#+
+
+
+g11<-ggplot(data = data_clustering2, aes(x = Cluster, y = T11))+ 
+  # geom_errorbar(aes(ymin = mean-2*se, ymax = mean+2*se, color = Question),
+  #               position= position_dodge(0.5), width = 0.2) +
+  geom_point(position = position_dodge(0.5)) +
+  labs(x = "", y = "T11: Goals and commitments")+
+  theme(axis.text.x = element_text(size = 6, angle = 55, hjust = 1))+   theme(axis.title.y = element_text(size = 6))+
+geom_hline(yintercept=mean(data_clust$V13), linetype="dashed", color = "black")+ theme(legend.position="bottom")+
+  ylim(0,  max(data_clustering2$T11))#+
+
+
+g12<-ggplot(data = data_clustering2, aes(x = Cluster, y = T12))+ 
+  # geom_errorbar(aes(ymin = mean-2*se, ymax = mean+2*se, color = Question),
+  #               position= position_dodge(0.5), width = 0.2) +
+  geom_point(position = position_dodge(0.5)) +
+  labs(x = "", y = "T12: Green energy technologies")+
+  theme(axis.text.x = element_text(size = 6, angle = 55, hjust = 1))+   theme(axis.title.y = element_text(size = 6))+
+geom_hline(yintercept=mean(data_clust$V14), linetype="dashed", color = "black")+ theme(legend.position="bottom")+
+  ylim(0,  max(data_clustering2$T12))#+
+  
+
+
+
+g13<-ggplot(data = data_clustering2, aes(x = Cluster, y = T13))+ 
+  # geom_errorbar(aes(ymin = mean-2*se, ymax = mean+2*se, color = Question),
+  #               position= position_dodge(0.5), width = 0.2) +
+  geom_point(position = position_dodge(0.5)) +
+  labs(x = "", y = "T13: Forests and ecosystems")+
+  theme(axis.text.x = element_text(size = 6, angle = 55, hjust = 1))+   theme(axis.title.y = element_text(size = 6))+
+geom_hline(yintercept=mean(data_clust$V15), linetype="dashed", color = "black")+ theme(legend.position="bottom")+
+  ylim(0,  max(data_clustering2$T13))#+
+
+g14<-ggplot(data = data_clustering2, aes(x = Cluster, y = T14))+ 
+  # geom_errorbar(aes(ymin = mean-2*se, ymax = mean+2*se, color = Question),
+  #               position= position_dodge(0.5), width = 0.2) +
+  geom_point(position = position_dodge(0.5)) +
+  labs(x = "", y = "T14: Project financing")+
+  theme(axis.text.x = element_text(size = 6, angle = 55, hjust = 1))+   theme(axis.title.y = element_text(size = 6))+
+geom_hline(yintercept=mean(data_clust$V16), linetype="dashed", color = "black")+ theme(legend.position="bottom")+
+  ylim(0,  max(data_clustering2$T14))#+
+
+g15<-ggplot(data = data_clustering2, aes(x = Cluster, y = T15))+ 
+  # geom_errorbar(aes(ymin = mean-2*se, ymax = mean+2*se, color = Question),
+  #               position= position_dodge(0.5), width = 0.2) +
+  geom_point(position = position_dodge(0.5)) +
+  labs(x = "", y = "T15: Rural development")+
+  theme(axis.text.x = element_text(size = 6, angle = 55, hjust = 1))+   theme(axis.title.y = element_text(size = 6))+
+geom_hline(yintercept=mean(data_clust$V17), linetype="dashed", color = "black")+ theme(legend.position="bottom")+
+  ylim(0,  max(data_clustering2$T15))#+
+
+g16<-ggplot(data = data_clustering2, aes(x = Cluster, y = T16))+ 
+  # geom_errorbar(aes(ymin = mean-2*se, ymax = mean+2*se, color = Question),
+  #               position= position_dodge(0.5), width = 0.2) +
+  geom_point(position = position_dodge(0.5)) +
+  labs(x = "", y = "T16: Agriculture resource management")+
+  theme(axis.text.x = element_text(size = 6, angle = 55, hjust = 1))+   theme(axis.title.y = element_text(size = 6))+
+geom_hline(yintercept=mean(data_clust$V18), linetype="dashed", color = "black")+ theme(legend.position="bottom")+
+  ylim(0,  max(data_clustering2$T16))#+
+
+
+g17<-ggplot(data = data_clustering2, aes(x = Cluster, y = T17))+ 
+  # geom_errorbar(aes(ymin = mean-2*se, ymax = mean+2*se, color = Question),
+  #               position= position_dodge(0.5), width = 0.2) +
+  geom_point(position = position_dodge(0.5)) +
+  labs(x = "", y = "T17: Waste, transport and industry")+
+  theme(axis.text.x = element_text(size = 6, angle = 55, hjust = 1))+   theme(axis.title.y = element_text(size = 6))+
+geom_hline(yintercept=mean(data_clust$V19), linetype="dashed", color = "black")+ theme(legend.position="bottom")+
+  ylim(0,  max(data_clustering2$T17))#+
+
+
+g18<-ggplot(data = data_clustering2, aes(x = Cluster, y = T18))+ 
+  # geom_errorbar(aes(ymin = mean-2*se, ymax = mean+2*se, color = Question),
+  #               position= position_dodge(0.5), width = 0.2) +
+  geom_point(position = position_dodge(0.5)) +
+  labs(x = "", y = "T18: (Inter)governmental organisations")+
+  theme(axis.text.x = element_text(size = 6, angle = 55, hjust = 1))+   theme(axis.title.y = element_text(size = 6))+
+geom_hline(yintercept=mean(data_clust$V20), linetype="dashed", color = "black")+ theme(legend.position="bottom")+
+  ylim(0,  max(data_clustering2$T18))#+
+  
+
+
+
+
+g19<-ggplot(data = data_clustering2, aes(x = Cluster, y = T19))+ 
+  # geom_errorbar(aes(ymin = mean-2*se, ymax = mean+2*se, color = Question),
+  #               position= position_dodge(0.5), width = 0.2) +
+  geom_point(position = position_dodge(0.5)) +
+  labs(x = "", y = "T19: Gender and youth")+
+  theme(axis.text.x = element_text(size = 6, angle = 55, hjust = 1))+   theme(axis.title.y = element_text(size = 6))+
+geom_hline(yintercept=mean(data_clust$V21), linetype="dashed", color = "black")+ theme(legend.position="bottom")+
+  ylim(0,  max(data_clustering2$T19))#+
+
+g20<-ggplot(data = data_clustering2, aes(x = Cluster, y = T20))+ 
+  # geom_errorbar(aes(ymin = mean-2*se, ymax = mean+2*se, color = Question),
+  #               position= position_dodge(0.5), width = 0.2) +
+  geom_point(position = position_dodge(0.5)) +
+  labs(x = "", y = "T20: Action plans")+
+  theme(axis.text.x = element_text(size = 6, angle = 55, hjust = 1))+   theme(axis.title.y = element_text(size = 6))+
+geom_hline(yintercept=mean(data_clust$V22), linetype="dashed", color = "black")+ theme(legend.position="bottom")+
+  ylim(0,  max(data_clustering2$T20))#+
+
+g21<-ggplot(data = data_clustering2, aes(x = Cluster, y = T21))+ 
+  # geom_errorbar(aes(ymin = mean-2*se, ymax = mean+2*se, color = Question),
+  #               position= position_dodge(0.5), width = 0.2) +
+  geom_point(position = position_dodge(0.5)) +
+  labs(x = "", y = "T21: Agriculture mitigation")+
+  theme(axis.text.x = element_text(size = 6, angle = 55, hjust = 1))+   theme(axis.title.y = element_text(size = 6))+
+geom_hline(yintercept=mean(data_clust$V23), linetype="dashed", color = "black")+ theme(legend.position="bottom")+
+  ylim(0,  max(data_clustering2$T21))#+
+
+library(gridExtra)
+library(grid)
+grid.arrange(g1, g2, g3, g4,g5,g6,g7,g8,g9,g10,g11,g12,g13,g14,g15,g16,g17,g18,g19,g20,g21, nrow = 3)
+#write.csv(data_clustering2, "data_clustering2.csv",sep = ";",row.names = FALSE,fileEncoding = "UTF-8")
+
+
+#merging 21 topics into 7 themes
+
+
+data_clustering3<-matrix(0,9,8)
+data_clustering3<-as.data.frame(data_clustering3)
+colnames(data_clustering3)<-c("Cluster","G1","G2","G3","G4","G5","G6","G7")
+
+data_clustering3[,1]<-c('C4: Venezuela','C1: Umbrella1 & Korea', "C2: Umbrella2 & EU","C9: Miscelleneous seven","C8: G77+ China & LMDC2",'C6: AILAC', "C7: AFrican Group","C3: CIS, Brazil and LMDC1","C5: India & SIDS")
+
+#following topic groupings from Table 2
+  data_clustering3[,2]<-data_clustering2[,2]+data_clustering2[,3]+data_clustering2[,16]
+  data_clustering3[,3]<-data_clustering2[,5]+data_clustering2[,7]+data_clustering2[,12]+data_clustering2[,15]+data_clustering2[,21]
+  data_clustering3[,4]<-data_clustering2[,4]+data_clustering2[,6]+data_clustering2[,9]
+  data_clustering3[,5]<-data_clustering2[,11]+data_clustering2[,13]+data_clustering2[,18]
+  data_clustering3[,6]<-data_clustering2[,8]+data_clustering2[,10]
+  data_clustering3[,7]<-data_clustering2[,14]+data_clustering2[,17]+data_clustering2[,22]
+  data_clustering3[,8]<-data_clustering2[,19]+data_clustering2[,20]
+    
+  
+rownames(data_clustering3)<-c('C4: Venezuela','C1: Umbrella1 & Korea', "C2: Umbrella2 & EU","C9: Miscelleneous seven","C8: G77+ China & LMDC2",'C6: AILAC', "C7: AFrican Group","C3: CIS, Brazil and LMDC1","C5: India & SIDS")
+
+
+g1<-ggplot(data = data_clustering3, aes(x = Cluster, y = G1))+ 
+  # geom_errorbar(aes(ymin = mean-2*se, ymax = mean+2*se, color = Question),
+  #               position= position_dodge(0.5), width = 0.2) +
+  geom_point(position = position_dodge(0.5)) +
+  labs(x = "", y = "G1: Development")+
+  theme(axis.text.x = element_text(size = 6, angle = 55, hjust = 1))+
+  theme(axis.title.y = element_text(size = 8))+
+geom_hline(yintercept=mean(data_clustering3$G1), linetype="dashed", color = "black")+ theme(legend.position="bottom")+
+  ylim(0,  max(data_clustering3$G1))#+
+
+g2<-ggplot(data = data_clustering3, aes(x = Cluster, y = G2))+ 
+  # geom_errorbar(aes(ymin = mean-2*se, ymax = mean+2*se, color = Question),
+  #               position= position_dodge(0.5), width = 0.2) +
+  geom_point(position = position_dodge(0.5)) +
+  labs(x = "", y = "G2: Implementation, plans...")+
+  theme(axis.text.x = element_text(size = 6, angle = 55, hjust = 1))+
+  theme(axis.title.y = element_text(size = 8))+
+geom_hline(yintercept=mean(data_clustering3$G2), linetype="dashed", color = "black")+ theme(legend.position="bottom")+
+  ylim(0,  max(data_clustering3$G2))#+
+
+g3<-ggplot(data = data_clustering3, aes(x = Cluster, y = G3))+ 
+  # geom_errorbar(aes(ymin = mean-2*se, ymax = mean+2*se, color = Question),
+  #               position= position_dodge(0.5), width = 0.2) +
+  geom_point(position = position_dodge(0.5)) +
+  labs(x = "", y = "G3: Mitgation targets")+
+  theme(axis.text.x = element_text(size = 6, angle = 55, hjust = 1))+
+  theme(axis.title.y = element_text(size = 8))+
+geom_hline(yintercept=mean(data_clustering3$G3), linetype="dashed", color = "black")+ theme(legend.position="bottom")+
+  ylim(0,  max(data_clustering3$G3))#+
+
+g4<-ggplot(data = data_clustering3, aes(x = Cluster, y = G4))+ 
+  # geom_errorbar(aes(ymin = mean-2*se, ymax = mean+2*se, color = Question),
+  #               position= position_dodge(0.5), width = 0.2) +
+  geom_point(position = position_dodge(0.5)) +
+  labs(x = "", y = "G4: Policies and technologies")+
+  theme(axis.text.x = element_text(size = 6, angle = 55, hjust = 1))+
+  theme(axis.title.y = element_text(size = 8))+
+geom_hline(yintercept=mean(data_clustering3$G4), linetype="dashed", color = "black")+ theme(legend.position="bottom")+
+  ylim(0,  max(data_clustering3$G4))#+
+
+
+g5<-ggplot(data = data_clustering3, aes(x = Cluster, y = G5))+ 
+  # geom_errorbar(aes(ymin = mean-2*se, ymax = mean+2*se, color = Question),
+  #               position= position_dodge(0.5), width = 0.2) +
+  geom_point(position = position_dodge(0.5)) +
+  labs(x = "", y = "G5: Impacts of climate change")+
+  theme(axis.text.x = element_text(size = 6, angle = 55, hjust = 1))+
+  theme(axis.title.y = element_text(size = 8))+
+geom_hline(yintercept=mean(data_clustering3$G5), linetype="dashed", color = "black")+ theme(legend.position="bottom")+
+  ylim(0,  max(data_clustering3$G5))#+
+
+
+g6<-ggplot(data = data_clustering3, aes(x = Cluster, y = G6))+ 
+  # geom_errorbar(aes(ymin = mean-2*se, ymax = mean+2*se, color = Question),
+  #               position= position_dodge(0.5), width = 0.2) +
+  geom_point(position = position_dodge(0.5)) +
+  labs(x = "", y = "G6: AFOLU sector")+
+  theme(axis.text.x = element_text(size = 6, angle = 55, hjust = 1))+
+  theme(axis.title.y = element_text(size = 8))+
+geom_hline(yintercept=mean(data_clustering3$G6), linetype="dashed", color = "black")+ theme(legend.position="bottom")+
+  ylim(0,  max(data_clustering3$G6))#+
+  
+
+g7<-ggplot(data = data_clustering3, aes(x = Cluster, y = G7))+ 
+  # geom_errorbar(aes(ymin = mean-2*se, ymax = mean+2*se, color = Question),
+  #               position= position_dodge(0.5), width = 0.2) +
+  geom_point(position = position_dodge(0.5)) +
+  labs(x = "", y = "G7: Stakeholders")+
+  theme(axis.text.x = element_text(size = 6, angle = 55, hjust = 1))+
+  theme(axis.title.y = element_text(size = 8))+
+geom_hline(yintercept=mean(data_clustering3$G7), linetype="dashed", color = "black")+ theme(legend.position="bottom")+
+  ylim(0,  max(data_clustering3$G7))#+
+
+library(gridExtra)
+library(grid)
+grid.arrange(g1, g2, g3, g4,g5,g6,g7, nrow = 1)
+
+#write.csv(data_clustering3, "data_clustering3.csv",sep = ";",row.names = FALSE,fileEncoding = "UTF-8")
+
+
+
+
+
+
+
+
+
+```
+
+
+
+```{r, echo=FALSE}
+logbeta<-ncpPrevFit_startup$beta$logbeta[[1]]
+word_prob<-exp(logbeta)
+word_attribute<-sapply(1:dim(word_prob)[2], function(y) which(word_prob[,y]==max(word_prob[,y])))
+#print(out$vocab)
+ 
+
+
+logbeta <- ncpPrevFit_startup$beta$logbeta[[1]]
+wordcounts <- ncpPrevFit_startup$dim$wcounts$x
+frexlabels <-calcfrex(logbeta, 0, wordcounts)
+problabels<-apply(logbeta, 1, order, decreasing=TRUE)
+# set.seed(1234)
+# wordcloud(words = out$vocab, freq = problabels[,1],scale=c(3,.1), min.freq = 0,
+#           max.words=20, random.order=FALSE, rot.per=0.5,
+#           colors=frexlabels[,1]) 
+# shadesOfGrey <- colorRampPalette(c("grey0", "grey100"))
+# fiftyGreys <- shadesOfGrey(length(out$vocab))
+nb.cols <- length(out$vocab)
+# threshold<-15
+# mycolors <- c(rep("#FFFFE5",length(out$vocab)-threshold),colorRampPalette(brewer.pal(8, "YlOrBr"))(threshold)) #heat.colors(10) rev(heat.colors(50))
+threshold<-2500
+mycolors <- c(rep("#FFFFE5",length(out$vocab)-threshold),colorRampPalette(rev(heat.colors(100)))(threshold)) #heat.colors(10) rev(heat.colors(50))
+
+pal<-colorRampPalette(c("yellow", "darkgreen"))
+mycolorsRB<-c(rep("lightyellow",length(out$vocab)-threshold),pal(threshold))
+
+vec<-matrix(0,length(out$vocab),Kchoice)
+for (j in 1:Kchoice){
+  jj<-length(out$vocab)
+  for (i in 1:length(out$vocab)){
+    vec[frexlabels[i,j],j]<-jj
+    jj<-jj-1
+  }
+}
+
+add_vector<-colSums(ncpPrevFit_startup$theta)/sum(ncpPrevFit_startup$theta)*10#c(0,0,0,1)
+equal_vector<-matrix(mean(add_vector)*1.3,Kchoice,1)#c(0,0,0,1)
+
+#vector to normalize fonts between wordclouds
+# library("stm")
+# library("wordcloud")
+par(mfrow = c(3, 7) ,mar=c(1,2,1,1)) 
+set.seed(1)
+library("stm")
+for (ci in Korder){
+stm::cloud(ncpPrevFit_startup, topic = ci, max.words = 100,scale=c(3,.2)*equal_vector[ci],rot.per=0,random.order=FALSE)#,colors=fiftyGreys[frexlabels[,1]])
+title(tiopiclabel[ci])
+}
+
+
+#put topic labels here
+tiopiclabel_wc<-as.character(matrix(0,Kchoice,1))
+tiopiclabel_wc[18]<-"T1: Sustainable \n development" #ABM, numerical stochastic, bayesian
+tiopiclabel_wc[12]<-"T2: Economic \n development"
+tiopiclabel_wc[17]<-"T3: Greenhouse gas \n accounting" # in value creation
+tiopiclabel_wc[7]<-"T4: International support \n and funding" # in value creation
+tiopiclabel_wc[8]<-"T5: Emission \n scenarios" #ABM, numerical stochastic, bayesian
+tiopiclabel_wc[14]<-"T6: Adaptation \n planning" #progress, patents
+tiopiclabel_wc[16]<-"T7: Vulnerability of \n coastal areas"
+tiopiclabel_wc[9]<-"T8: Targets and \n reporting" #analysing 
+tiopiclabel_wc[20]<-"T9: Climate system \n impacts" #developing 
+tiopiclabel_wc[4]<-"T10: Green energy \n policies (4.1%)"# and roadmapping
+tiopiclabel_wc[15]<-"T11: Goals and \n commitments" #sme, entrepreneurship, csr
+tiopiclabel_wc[3]<-"T12: Green energy \n technologies" #decision making
+tiopiclabel_wc[19]<-"T13: Forests and \n ecosystems" #analysing 
+tiopiclabel_wc[5]<-"T14: Project \n financing" # public policy, science, technology and innovation
+tiopiclabel_wc[21]<-"T15: Rural \n development"
+tiopiclabel_wc[6]<-"T16: Agriculture resource \n management"
+tiopiclabel_wc[13]<-"T17: Waste, transport \n and industry" #supply chain, agile, digitalization
+tiopiclabel_wc[11]<-"T18: (Inter)governmental \n organisations"
+tiopiclabel_wc[2]<-"T19: Gender and \n youth" #media, interaction, behaviour, online shopping
+tiopiclabel_wc[10]<-"T20: Action \n plans" #developing 
+tiopiclabel_wc[1]<-"T21: Agriculture \n mitigation"
+
+
+par(mfrow = c(3, 7) ,mar=c(1,2,1,1))
+set.seed(1)
+for (ci in Korder){
+stm::cloud(ncpPrevFit_startup, topic = ci, max.words = 100,scale=c(3,.2)*equal_vector[ci],colors=mycolorsRB[vec[,ci]],random.order=FALSE, random.color=FALSE, ordered.colors=TRUE,rot.per=0)
+title(tiopiclabel_wc[ci], line = -1, cex.main = .85)
+box("figure", col="black", lwd = 1)
+}
+
+```
+
+
+exploring correlations between topic proportionas in documents and the additional data
+```{r, echo=FALSE}
+
+data_lemmatized<-cbind(data_lemmatized,weights_aggregated[,Korder])
+colnames(data_lemmatized)[29:49]<-c("T1","T2","T3","T4","T5","T6","T7","T8","T9","T10","T11","T12","T13","T14","T15","T16","T17","T18","T19","T20","T21")
+
+library("Hmisc")
+library("quantreg")
+
+
+
+
+data_additional<- read.csv('E:/Projects/3_CurrentProjects/NDC text analysis/NDC data for Ivan etxtended March 2024.csv', header=T, sep=',',encoding = "UTF-8")
+data_additional<- data_additional[,c(1,14:19)]
+
+
+data_additional_all<-matrix(NA,length(NDC_database_clean$id),3)
+data_additional_all<-as.data.frame(data_additional_all)
+colnames(data_additional_all)<-c("Vulnerability","GDP","NRR")
+
+for (c in unique(NDC_database_clean$country)){
+  data_additional_all$Vulnerability[which(NDC_database_clean$country==c &   NDC_database_clean$version=="first_ndc")]<-
+    data_additional$Vulnerability.2015[which( data_additional$Country.code==c)]
+  data_additional_all$Vulnerability[which(NDC_database_clean$country==c &   NDC_database_clean$version=="second_ndc")]<-
+    data_additional$Vulnerability.2019[which( data_additional$Country.code==c)]
+  
+  
+  data_additional_all$GDP[which(NDC_database_clean$country==c &   NDC_database_clean$version=="first_ndc")]<-
+    data_additional$X2015.GDP.per.capita..2015.US..[which( data_additional$Country.code==c)]
+  data_additional_all$GDP[which(NDC_database_clean$country==c &   NDC_database_clean$version=="second_ndc")]<-
+    data_additional$X2019.GDP.per.capita[which( data_additional$Country.code==c)]
+  
+  data_additional_all$NRR[which(NDC_database_clean$country==c & NDC_database_clean$version=="first_ndc")]<-
+    data_additional$NR.rent.GDP.2015[which(data_additional$Country.code==c)]
+  data_additional_all$NRR[which(NDC_database_clean$country==c & NDC_database_clean$version=="second_ndc")]<-
+    data_additional$NR.rent.GDP.2019[which(data_additional$Country.code==c)]  
+}
+ 
+
+
+data_lemmatized<-cbind(data_lemmatized,data_additional_all)
+
+
+base<-na.omit(data_lemmatized[,c(4,8:11,13:17,28:52)])
+
+L = cor(base)
+#summary(base)
+testRes = cor.mtest(base, conf.level = 0.95)
+corrplot(L, p.mat = testRes$p,  method = "circle", insig='blank',
+         #order = "hclust",
+         diag = FALSE,
+         number.cex = 0.35,
+         cl.lim=c(-1,1),
+         addCoef.col = "black", # Add coefficient of correlation
+         tl.col = "black", tl.srt = 90,col=colorRampPalette(c("blue","white","red"))(200))$corrPos -> p1
+p1<-p1[which(p1$p.value<0.05),]
+text(p1$x, p1$y, round(p1$corr, 2),cex=.5)
+
+
+
+
+
+base<-na.omit(data_lemmatized[,c(4,8:11,13:17,28:52)])
+
+L = cor(base)
+#summary(base)
+# testRes = cor.mtest(base, conf.level = 0.95)
+# corrplot(L, p.mat = testRes$p,  method = "circle", insig='blank',
+#          #order = "hclust",
+#          diag = FALSE,
+#          number.cex = 0.35,
+#          cl.lim=c(-1,1),
+#          addCoef.col = "black", # Add coefficient of correlation
+#          tl.col = "black", tl.srt = 90,col=colorRampPalette(c("blue","white","red"))(200))$corrPos -> p1
+# p1<-p1[which(p1$p.value<0.05),]
+# text(p1$x, p1$y, round(p1$corr, 2),cex=.5)
+
+rownames(L)[c(1:6,33:35)]<-c("NDC version","Conditionality", "Emissions pc", "Emission per gdp","Emissions change","Length of NDC","Vulnerability","GDP","NR rents")
+
+# corrplot(L[c(1:6,33:35),c(1:6,33:35)], p.mat = testRes$p[c(1:6,33:35),c(1:6,33:35)],  method = "circle", insig='blank',
+#          #order = "hclust",
+#          diag = FALSE,
+#          number.cex = 0.5,
+#          cl.lim=c(-1,1),
+#          #addCoef.col = "black", # Add coefficient of correlation
+#          tl.col = "black", tl.srt = 90,col=colorRampPalette(c("blue","white","red"))(200))$corrPos -> p1
+# p1<-p1[which(p1$p.value<0.05),]
+# text(p1$x, p1$y, round(p1$corr, 2),
+#          number.cex = 0.33)
+library(car)
+
+#calculate the VIF for each predictor variable in the model
+
+data_lemmatized$GDP<-data_lemmatized$GDP/1000000
+data_lemmatized$length_txt<-data_lemmatized$length_txt/1000
+
+data_lemmatized$version<-data_lemmatized$version-1
+data_lemmatized$Type<-as.factor(data_lemmatized$Type)
+data_lemmatized$Party<-as.factor(data_lemmatized$Party)
+
+
+for (it in 1:Kchoice){
+  y<-data_lemmatized[,28+it]
+  model<-lm(y~ data_lemmatized$version
+            +data_lemmatized$Conditionality+data_lemmatized$Epc +data_lemmatized$Egdp + data_lemmatized$Echange  
+            #+ data_lemmatized$Type1+ data_lemmatized$Type2+ data_lemmatized$Type3 
+            
+            +data_lemmatized$Vulnerability + data_lemmatized$GDP + data_lemmatized$NRR + data_lemmatized$length_txt
+            )
+  print(summary(model))
+  #print(vif(model))
+}
+
+
+data_lemmatized$G1<-data_lemmatized$T1 + data_lemmatized$T2 +  data_lemmatized$T15
+data_lemmatized$G2<-data_lemmatized$T4 + data_lemmatized$T6 +  data_lemmatized$T11 + data_lemmatized$T14 +  data_lemmatized$T20
+data_lemmatized$G3<-data_lemmatized$T3 + data_lemmatized$T5 +  data_lemmatized$T8
+data_lemmatized$G4<-data_lemmatized$T10 + data_lemmatized$T12 +  data_lemmatized$T17
+data_lemmatized$G5<-data_lemmatized$T7 + data_lemmatized$T9
+data_lemmatized$G6<-data_lemmatized$T13 + data_lemmatized$T16 +  data_lemmatized$T21
+data_lemmatized$G7<-data_lemmatized$T18 + data_lemmatized$T19
+
+
+
+for (it in 1:7){
+  y<-data_lemmatized[,52+it]
+  model<-lm(y~ data_lemmatized$version
+            +data_lemmatized$Conditionality+data_lemmatized$Epc +data_lemmatized$Egdp + data_lemmatized$Echange  
+            #+ data_lemmatized$Type1+ data_lemmatized$Type2+ data_lemmatized$Type3 
+            
+            +data_lemmatized$Vulnerability + data_lemmatized$GDP + data_lemmatized$NRR + data_lemmatized$length_txt
+            )
+  print(summary(model))
+  #print(vif(model))
+}
+  
+
+
+```
+
+The next figure demonstrates co-occurrence of topics showing which pairs of topics tend to be mentioned within the same responses more (red) or less (blue) often.
+
+```{r, echo=FALSE}
+
+dt.proportions_question1<- make.dt(ncpPrevFit_startup2)
+dt.proportions_question1<-as.matrix(dt.proportions_question1[,-1])
+
+TopicCorrMatrix1<-matrix(0,Kchoice,Kchoice)
+
+
+for (i in Korder){
+  for (j in Korder){
+    TopicCorrMatrix1[i,j]<-cor(dt.proportions_question1[,i],dt.proportions_question1[,j])
+  }
+}
+
+
+library(corrplot)
+rownames(TopicCorrMatrix1)<-tiopiclabel[Korder]
+
+colnames(TopicCorrMatrix1)<-c("T1","T2","T3","T4","T5","T6","T7","T8","T9","T10","T11","T12","T13","T14","T15","T16","T17","T18","T19","T20","T21")
+
+
+TopicCorrMatrix1<-TopicCorrMatrix1-diag(Kchoice)
+#corrplot(TopicCorrMatrix1, is.corr = FALSE, order="hclust", method = "square",tl.cex=.7,tl.col = "black",cl.lim = c(-1, 1),col=colorRampPalette(c("blue","white","red"))(200))
+# corrplot(TopicCorrMatrix1, is.corr = FALSE, order="hclust", method = "square",tl.cex=.7,tl.col = "black",cl.lim = c(-1, 1),col=colorRampPalette(c("blue","white","red"))(200))
+
+
+M= round(TopicCorrMatrix1,2)
+
+testRes = cor.mtest(dt.proportions_question1, conf.level = 0.9)
+corrplot(M, p.mat = testRes$p, method = 'circle', insig='blank',col.lim = c(-1, 1),tl.cex=.5,tl.col="black",
+          diag = FALSE,col=colorRampPalette(c("blue","white","red"))(200))$corrPos -> p1
+p1<-p1[which(p1$p.value<0.10),]
+text(p1$x, p1$y, round(p1$corr, 2),cex=.7)
+
+
+
+
+node_size<-aggregated_topic_weights*300
+
+TopicCorrMatrix1<-matrix(0,Kchoice,Kchoice)
+
+
+
+mod.out.corr <- topicCorr(ncpPrevFit_startup)
+mod.out.corr2<-matrix(0,Kchoice,Kchoice)
+mod.out.corr$posadj<-matrix(0,Kchoice,Kchoice)
+for (i in 1:Kchoice){
+  for (j in 1:Kchoice){
+    if(testRes$p[i,j]<0.1){
+      mod.out.corr2[i,j]<-mod.out.corr$cor[i,j]
+      if(mod.out.corr$cor[i,j]>0){
+         mod.out.corr$posadj[i,j]<-1
+      }
+    }
+  }
+}
+mod.out.corr$cor<-mod.out.corr2
+mod.out.corr$poscor<-mod.out.corr2
+(sum(mod.out.corr$posadj-diag(Kchoice)))/2
+
+
+
+
+pal<-colorRampPalette(c("yellow","orange","red"))
+mycolorsBR<-pal(round(max(node_size)))
+#mycolorsBR<-pal(Kchoice)
+node_colorw1<-mycolorsBR[round(node_size[Korder])]
+
+graph0<-graph_from_adjacency_matrix(mod.out.corr$posadj, mode =  "undirected", weighted = NULL,  diag = TRUE, add.colnames = NULL,
+add.rownames = NA)
+edge_density(graph0, loops = FALSE)
+# 
+# plot(mod.out.corr, layout=layout_nicely,vlabels = tiopiclabel[Korder],vertex.label.cex = 0.5,vertex.size=node_size[Korder],vertex.label.dist=1,vertex.color=node_colorw1)
+# plot(mod.out.corr, layout=layout.fruchterman.reingold,vlabels = tiopiclabel[Korder],vertex.label.cex = 0.5,vertex.size=node_size[Korder],vertex.label.dist=1,vertex.color=node_colorw1)
+plot(mod.out.corr, layout=layout_with_kk,vlabels = tiopiclabel[Korder],vertex.label.cex = 0.75,vertex.size=node_size[Korder],vertex.label.dist=1,vertex.color=node_colorw1)
+
+
+
+```
