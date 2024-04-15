@@ -1,5 +1,8 @@
 # ParisAgreementNDCs-
-Files to reproduce results from the associated pape titled "Categorising content of Paris Agreement NDCs through computational linguistic analysis"
+Files to reproduce results from the associated paper titled "Categorising content of Paris Agreement NDCs through computational linguistic analysis"
+
+The R files is uploaded in this repository.
+The source files due to their large size are made availabale under this link https://drive.google.com/drive/folders/13LpooIkl4d_y10ewlVbhsqCsjA_Awv6u
 
 Before running the R Markdown file, please make sure that
 1. you saved the associated files on your machine and updated path for the working directory
