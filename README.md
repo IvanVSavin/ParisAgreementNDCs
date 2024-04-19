@@ -1,4 +1,4 @@
-# ParisAgreementNDCs-
+# ParisAgreementNDCs
 Files to reproduce results from the associated paper titled "Categorising content of Paris Agreement NDCs through computational linguistic analysis"
 
 The R files is uploaded in this repository.
